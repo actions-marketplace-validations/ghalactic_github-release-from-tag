@@ -1,7 +1,7 @@
 import { RestEndpointMethodTypes } from "@octokit/action";
 import { Octokit } from "octokit";
 import { getDiscussionNumberByUrl } from "../../src/discussion.js";
-import { ReleaseData } from "../../src/type/octokit.js";
+import { AssetData, ReleaseData } from "../../src/type/octokit.js";
 import { owner, repo } from "./fixture-repo.js";
 import { readEmptyTreeHash } from "./git.js";
 import { sleep } from "./timers.js";
@@ -19,7 +19,7 @@ export function createOctokit(): Octokit {
 export async function createFile(
   branch: string,
   path: string,
-  content: string
+  content: string,
 ): Promise<FileContentsData> {
   const octokit = createOctokit();
 
@@ -44,7 +44,7 @@ export async function createBranchForCi(
       path: string;
       content: string;
     }[];
-  } = {}
+  } = {},
 ): Promise<{
   headSha: string | undefined;
   ref: RefData;
@@ -70,7 +70,7 @@ export async function createBranchForCi(
   const workflowFile = await createFile(
     branch,
     `.github/workflows/publish-release.${branch}.yml`,
-    workflow
+    workflow,
   );
 
   const headSha = workflowFile.commit.sha;
@@ -80,7 +80,7 @@ export async function createBranchForCi(
 }
 
 export async function createOrphanBranch(
-  branch: string
+  branch: string,
 ): Promise<{ commit: CommitData; ref: RefData }> {
   const octokit = createOctokit();
 
@@ -103,7 +103,7 @@ export async function createOrphanBranch(
 
 export async function createBranch(
   branch: string,
-  commit: string
+  commit: string,
 ): Promise<RefData> {
   const octokit = createOctokit();
 
@@ -120,7 +120,7 @@ export async function createBranch(
 export async function createTag(
   sha: string,
   tag: string,
-  annotation?: string
+  annotation?: string,
 ): Promise<{ object: TagData | undefined; ref: RefData }> {
   const octokit = createOctokit();
 
@@ -154,7 +154,7 @@ export async function createTag(
 export async function getDiscussionReactionGroupsByRelease(
   owner: string,
   repo: string,
-  release: ReleaseData
+  release: ReleaseData,
 ): Promise<ReactionGroupData[]> {
   const { graphql } = createOctokit();
 
@@ -195,7 +195,7 @@ export async function getDiscussionReactionGroupsByRelease(
 
 /**
  * Yet another function that has to do everything the hard way because of
- * GitHub's API. Unfortunately, you cannot look up a draft release by tag, so
+ * GitHub's API. Unfortunately, you can't look up a draft release by tag, so
  * this function must list all releases, and find the release manually.
  */
 export async function getReleaseByTag(tag: string): Promise<ReleaseData> {
@@ -215,8 +215,27 @@ export async function getReleaseByTag(tag: string): Promise<ReleaseData> {
   throw new Error(`Unable to find release for tag ${JSON.stringify(tag)}`);
 }
 
+export async function getReleaseAssetContent({
+  browser_download_url,
+}: AssetData): Promise<string> {
+  const response = await fetch(browser_download_url, {
+    headers: {
+      Accept: "application/octet-stream",
+      Authorization: `token ${process.env.HOMEBREW_GITHUB_API_TOKEN}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download ${browser_download_url}: ${response.statusText}`,
+    );
+  }
+
+  return await response.text();
+}
+
 export async function listAnnotationsByWorkflowRun(
-  workflowRun: WorkflowRunData
+  workflowRun: WorkflowRunData,
 ): Promise<AnnotationData[]> {
   const octokit = createOctokit();
 
@@ -237,7 +256,7 @@ export async function listAnnotationsByWorkflowRun(
 
   if (checkRuns.length < 1)
     throw new Error(
-      `Unable to locate check runs for check suite ${checkSuiteId}`
+      `Unable to locate check runs for check suite ${checkSuiteId}`,
     );
 
   return octokit.paginate(octokit.rest.checks.listAnnotations, {
@@ -253,7 +272,7 @@ export async function listAnnotationsByWorkflowRun(
  * using query parameters that made sense, restricting the results to completed
  * runs, etc.
  *
- * Unfortunately, GitHub's API starting omitting workflow runs when specifying
+ * Unfortunately, GitHub's API started omitting workflow runs when specifying
  * simple filters like "status=completed" - including workflow runs that
  * definitely matched the filters. No idea why this should be the case. So
  * instead, I was forced to use a unique workflow filename for each test branch,
@@ -261,7 +280,7 @@ export async function listAnnotationsByWorkflowRun(
  */
 export async function waitForCompletedTagWorkflowRun(
   fileName: string,
-  tag: string
+  tag: string,
 ): Promise<WorkflowRunData> {
   const octokit = createOctokit();
 

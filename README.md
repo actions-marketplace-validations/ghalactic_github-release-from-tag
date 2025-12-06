@@ -31,8 +31,9 @@ to when you [publish a GitHub Release manually].
 
 - [Minimal configuration, or often **zero** configuration](#configuration)
 - [SemVer stability determines **pre-release** status](#release-stability)
+- [**Latest release** management](#latest-release-management)
 - [**Markdown** support in tag annotation messages](#release-name-and-body)
-- [Asset uploading with support for **labels**](#release-assets)
+- [Asset uploading with support for **labels** and **checksums**](#release-assets)
 - [Automated **release notes** support](#automated-release-notes)
 - [Release **discussion** creation](#release-discussions)
 - [Releases can be created as **drafts**](#draft-releases)
@@ -57,13 +58,15 @@ jobs:
   publish:
     name: Publish release
     runs-on: ubuntu-latest
+    concurrency: publish-release
     permissions:
       contents: write
+      discussions: write # (for release discussion creation)
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Publish release
-        uses: ghalactic/github-release-from-tag@v4
+        uses: ghalactic/github-release-from-tag@v6
 ```
 
 It's also possible to use [`if` conditionals] to restrict the release publishing
@@ -73,7 +76,7 @@ step inside a multi-purpose workflow, so that it only runs on tag pushes:
 
 ```yaml
 - name: Publish release
-  uses: ghalactic/github-release-from-tag@v4
+  uses: ghalactic/github-release-from-tag@v6
   if: github.ref_type == 'tag'
 ```
 
@@ -96,15 +99,17 @@ jobs:
   publish:
     name: Publish release
     runs-on: ubuntu-latest
+    concurrency: publish-release
     permissions:
       contents: write
+      discussions: write # (for release discussion creation)
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          ref: refs/tags/${{ github.event.inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
       - name: Publish release
-        uses: ghalactic/github-release-from-tag@v4
+        uses: ghalactic/github-release-from-tag@v6
 ```
 
 ### GitHub token
@@ -118,7 +123,7 @@ token, you can do so via [action inputs]:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
 ```
@@ -135,7 +140,8 @@ permissions for the `GITHUB_TOKEN`].
 
 [modifying the permissions for the `github_token`]: https://docs.github.com/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
 
-> **Note:** In February 2023, the default token permissions for new repos
+> [!NOTE]
+> In February 2023, the default token permissions for new repos
 > [changed to be read-only]. If your repo was created before this time, the
 > default token would have been pre-configured with write access.
 
@@ -176,7 +182,7 @@ prerelease: true # or false
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     prerelease: "true" # or "false"
 ```
@@ -195,6 +201,148 @@ prerelease: true # or false
 | `0.1` / `v0.1`                       | no         | pre-release       |
 | `something-else`                     | no         | pre-release       |
 
+### Latest release management
+
+This action can automatically or manually set published releases as the [latest
+release] for the repo. There are several strategies that can be [configured] for
+determining whether the published release should be set as the latest release.
+
+[latest release]: https://docs.github.com/repositories/releasing-projects-on-github/about-releases#linking-to-the-latest-release
+[configured]: #configuration
+
+> [!TIP]
+> Draft releases and pre-releases can't be set as the latest release for a repo.
+> Regardless of what strategy is configured, this action will not attempt to set
+> a draft or pre-release as the latest release.
+
+#### Setting newly created releases as latest
+
+This strategy will set any newly created, non-draft, stable release as the
+latest release. Updated releases will not have their latest status changed. This
+matches GitHub's default behavior.
+
+This is the **default strategy**, but you can explicitly enable this strategy
+via the [configuration file], or via [action inputs]:
+
+[configuration file]: #the-configuration-file
+[action inputs]: #action-inputs
+
+```yaml
+# In .github/github-release-from-tag.yml:
+makeLatest: if-new
+```
+
+```yaml
+# In your workflow:
+- uses: ghalactic/github-release-from-tag@v6
+  with:
+    makeLatest: if-new
+```
+
+#### SemVer-based latest releases
+
+This strategy will set the published release as the latest release if it makes
+sense according to the [SemVer] specification. In other words:
+
+[semver]: https://semver.org/
+
+- If the published release tag is _not_ a valid SemVer version, the published
+  release will **never** be set as the latest release.
+- If the published latest release tag _is_ a valid SemVer version, and the
+  current latest release tag is _not_ a valid SemVer version, the published
+  release will **always** be set as the latest release.
+- If both the published release tag and the current latest release tag are valid
+  SemVer versions, the published release will be set as the latest release if:
+  - The published release tag is a _stable_ SemVer version, and the current
+    latest release tag is an _unstable_ SemVer version; OR
+  - The published release tag has the _same_ SemVer stability as the current
+    latest release tag, but a higher [SemVer precedence].
+
+[semver precedence]: https://semver.org/#spec-item-11
+
+You can enable this strategy via the [configuration file], or via [action
+inputs]:
+
+[configuration file]: #the-configuration-file
+[action inputs]: #action-inputs
+
+```yaml
+# In .github/github-release-from-tag.yml:
+makeLatest: semver
+```
+
+```yaml
+# In your workflow:
+- uses: ghalactic/github-release-from-tag@v6
+  with:
+    makeLatest: semver
+```
+
+> [!CAUTION]
+> Using this strategy can cause race conditions if multiple release workflows
+> run at the same time. It's recommended to set a [concurrency group] on your
+> release publishing workflows or jobs to mitigate this.
+
+[concurrency group]: https://docs.github.com/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+
+#### Legacy GitHub latest release management
+
+This strategy defers to GitHub's legacy behavior for determining the latest
+release. In GitHub's own words, this strategy:
+
+> "...specifies that the latest release should be determined based on the
+> release creation date and higher semantic version"
+>
+> (From the [Create a release] REST API endpoint documentation)
+
+[create a release]: https://docs.github.com/en/rest/releases/releases?apiVersion=2022-11-28#create-a-release
+
+You can enable this strategy via the [configuration file], or via [action
+inputs]:
+
+[configuration file]: #the-configuration-file
+[action inputs]: #action-inputs
+
+```yaml
+# In .github/github-release-from-tag.yml:
+makeLatest: legacy
+```
+
+```yaml
+# In your workflow:
+- uses: ghalactic/github-release-from-tag@v6
+  with:
+    makeLatest: legacy
+```
+
+#### Explicit setting latest releases
+
+You can explicitly [configure] whether the published release should be set as
+the latest release via the [configuration file], or via [action inputs]:
+
+[configure]: #configuration
+[configuration file]: #the-configuration-file
+[action inputs]: #action-inputs
+
+```yaml
+# In .github/github-release-from-tag.yml:
+makeLatest: always # or never
+```
+
+```yaml
+# In your workflow:
+- uses: ghalactic/github-release-from-tag@v6
+  with:
+    makeLatest: always # or never
+```
+
+> [!CAUTION]
+> Specifying `makeLatest: always` will cause even **updated** releases to be set
+> as the latest release. This can be useful in advanced scenarios when
+> configured via a dynamic [action input], but is usually undesirable otherwise.
+
+[action input]: #action-inputs
+
 ### Draft releases
 
 This action can be [configured] to create draft releases. These draft releases
@@ -212,7 +360,7 @@ draft: true
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     draft: "true"
 ```
@@ -266,6 +414,48 @@ with Markdown tag annotation bodies:
 
     git tag-md 1.0.0
 
+##### Markdown heading anchors
+
+GitHub doesn't generate [section links] for Markdown headings in release bodies,
+like it does for other Markdown content. This means that you normally can't link
+directly to a heading in a release body, or include links to headings in your
+release body markdown.
+
+[section links]: https://docs.github.com/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#section-links
+
+This action solves this issue by generating **heading anchors** for each heading
+in the release body. These anchors work just like the ones generated for most
+Markdown content on GitHub, and can be used to link directly to headings in your
+release body.
+
+For example, if you have a heading in your release body like this:
+
+```markdown
+#### Support for turbo-encabulators
+
+For a number of years now, work has been proceeding in order to bring perfection
+to the crudely conceived idea of a machine that would not only supply inverse
+reactive current for use in unilateral phase detractors, but would also be
+capable of automatically synchronizing cardinal grammeters. Such a machine is
+the Turbo-Encabulator.
+```
+
+Then you can link directly to this heading in your release body like so:
+
+```markdown
+### Added
+
+- Added support for [turbo-encabulators].
+
+[turbo-encabulators]: #support-for-turbo-encabulators
+```
+
+And once the release is published, you can also link directly to the heading in
+the release body from external sources by adding the anchor to the end of the
+release URL, like so:
+
+https://github.com/ghalactic/github-release-from-tag/releases/v5.3.0#markdown-heading-anchors
+
 ##### Markdown line breaks
 
 It's common for tag annotation messages to be "wrapped" at a fixed column width,
@@ -314,7 +504,7 @@ generateReleaseNotes: true
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     generateReleaseNotes: "true"
 ```
@@ -366,20 +556,27 @@ assets:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     # Note the "|" character - this example uses a YAML multiline string.
     assets: |
       - path: path/to/asset-d
 ```
 
-> **⚠️ Warning:** This action will **overwrite existing release assets** if their
-> names match the assets configured for upload. Assets other than the ones
-> specified in configuration or action inputs will not be modified or removed.
+> [!CAUTION]
+> This action will **overwrite existing release assets** if their names match
+> the assets configured for upload, or if their names match the
+> [checksum assets]. Assets other than these will not be modified or removed.
 
-> **Note:** Unlike other [action inputs], which typically override their
-> equivalent [configuration file] options, assets specified via action inputs
-> are **merged** with those specified in the configuration file.
+[checksum assets]: #checksum-assets
+
+> [!TIP]
+> Unlike other [action inputs], which typically override their equivalent
+> [configuration file] options, assets specified via action inputs are
+> **merged** with those specified in the configuration file.
+
+[action inputs]: #action-inputs
+[configuration file]: #the-configuration-file
 
 Each asset must have a `path` property, which is a file glob pattern supported
 by [`@actions/glob`]. If no matching file is found when the action is run, **the
@@ -406,7 +603,7 @@ assets:
 
 ```yaml
 # In your workflow (using YAML):
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     # Note the "|" character - this example uses a YAML multiline string.
     assets: |
@@ -417,7 +614,7 @@ assets:
 
 ```yaml
 # In your workflow (using JSON):
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     # Note the "|" character - this example uses a YAML multiline string.
     assets: |
@@ -448,7 +645,7 @@ assets:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     # Note the "|" character - this example uses a YAML multiline string.
     assets: |
@@ -472,10 +669,69 @@ value for this input is up to you, but any value from a [context] (e.g.
 - id: listAssets
   run: echo "assets=$(bash list-assets.sh)" >> $GITHUB_OUTPUT
 
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     assets: ${{ steps.listAssets.outputs.assets }}
 ```
+
+#### Checksum assets
+
+By default, this action generates **checksum assets**. When a release has
+associated assets specified, two checksum assets will be generated for the
+release:
+
+- `checksums.sha256` — A plaintext checksum file in [`sha256sum`] format.
+- `checksums.json` — A JSON file containing checksums for each asset.
+
+[`sha256sum`]: https://dashdash.io/1/sha256sum
+
+You can disable this feature via the [configuration file], or via [action
+inputs]:
+
+[configuration file]: #the-configuration-file
+[action inputs]: #action-inputs
+
+```yaml
+# In .github/github-release-from-tag.yml:
+checksum:
+  generateAssets: false
+```
+
+```yaml
+# In your workflow:
+- uses: ghalactic/github-release-from-tag@v6
+  with:
+    checksumGenerateAssets: "false"
+```
+
+Checksums for each asset are always included in the `assets` [action output],
+even when **checksum asset** generation is disabled.
+
+[action output]: #action-outputs
+
+<details>
+<summary>Example <code>checksums.sha256</code></summary>
+
+```
+3878a1aff7b0769be29e355922a89de794078db863cdc931d01e687168f06443  file-a.txt
+f97a35fc9ddddd6bbfe0244e7608ec342dba9ed18e7227db061997d32133edeb  file-b.zip
+```
+
+</details>
+
+<details>
+<summary>Example <code>checksums.json</code></summary>
+
+```json
+{
+  "sha256": {
+    "file-a.txt": "3878a1aff7b0769be29e355922a89de794078db863cdc931d01e687168f06443",
+    "file-b.zip": "f97a35fc9ddddd6bbfe0244e7608ec342dba9ed18e7227db061997d32133edeb"
+  }
+}
+```
+
+</details>
 
 ### Release discussions
 
@@ -494,9 +750,22 @@ discussion:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     discussionCategory: Announcements
+```
+
+> [!IMPORTANT]
+> Release discussion creation also requires you to grant **write** access to
+> **discussions** to the [GitHub token] used to manage releases:
+
+[GitHub token]: #github-token
+
+```yaml
+# In your workflow:
+permissions:
+  contents: write
+  discussions: write # required for release discussion creation
 ```
 
 When enabled, discussions will automatically be created and linked to each
@@ -524,7 +793,7 @@ reactions: ["+1", laugh, hooray, heart, rocket, eyes]
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     reactions: +1,laugh,hooray,heart,rocket,eyes
 ```
@@ -542,7 +811,7 @@ discussion:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     discussionCategory: Announcements
     discussionReactions: +1,-1,laugh,hooray,confused,heart,rocket,eyes
@@ -574,14 +843,15 @@ summary:
 
 ```yaml
 # In your workflow:
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     summaryEnabled: "false"
 ```
 
 ## Configuration
 
-> **Tip:** Try to use as _little_ configuration as possible. Everything here is
+> [!TIP]
+> Try to use as _little_ configuration as possible. Everything here is
 > **optional**, and **the less configuration the better**.
 
 ### The configuration file
@@ -589,21 +859,27 @@ summary:
 This action supports an **optional** YAML configuration file, with options for
 affecting how releases are published:
 
-> **Note:** These options can also be specified by [action inputs]. A
+> [!TIP]
+> These options can also be specified by [action inputs]. A
 > [JSON Schema definition] is also available.
 
 [action inputs]: #action-inputs
-[json schema definition]: src/config/schema.js
+[json schema definition]: https://ghalactic.github.io/github-release-from-tag/schema/config.v6.schema.json
 
 ```yaml
 # .github/github-release-from-tag.yml
 
+# Get completion and validation when using the YAML extension for VS Code.
+# yaml-language-server: $schema=https://ghalactic.github.io/github-release-from-tag/schema/config.v6.schema.json
+
 # Set to true to produce releases in a draft state.
 draft: true
 
-# Set to true to append automatically generated release notes to the release
-# body.
+# Set to true to append automatically generated release notes to release bodies.
 generateReleaseNotes: true
+
+# Strategy for setting the published release as the repo's latest release.
+makeLatest: semver
 
 # Set to true or false to override the automatic tag name based pre-release
 # detection.
@@ -622,6 +898,10 @@ assets:
     name: custom-name-b.json
     label: Label for file-b.json
 
+checksum:
+  # Set to false to disable generation of checksum assets for releases.
+  generateAssets: false
+
 discussion:
   # The category to use when creating the discussion.
   category: category-a
@@ -639,15 +919,16 @@ summary:
 This action supports **optional** inputs for affecting how releases are
 published:
 
-> **Note:** With the exception of `assets`, these inputs take precedence over
-> any equivalent options specified in [the configuration file]. The
+> [!IMPORTANT]
+> With the exception of `assets`, these inputs take precedence over any
+> equivalent options specified in [the configuration file]. The
 > [action metadata file] contains the actual definitions for these inputs.
 
 [the configuration file]: #the-configuration-file
 [action metadata file]: action.yml
 
 ```yaml
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   with:
     # Set to "true" to produce releases in a draft state.
     draft: "true"
@@ -655,6 +936,9 @@ published:
     # Set to "true" to append automatically generated release notes to the
     # release body.
     generateReleaseNotes: "true"
+
+    # Strategy for setting the published release as the repo's latest release.
+    makeLatest: semver
 
     # Set to "true" or "false" to override the automatic tag name based
     # pre-release detection.
@@ -674,6 +958,9 @@ published:
         name: custom-name-b.json
         label: Label for file-b.json
 
+    # Set to "false" to disable generation of checksum assets for the release.
+    generateChecksumAssets: "false"
+
     # Use a custom GitHub token.
     token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
 
@@ -691,10 +978,10 @@ published:
 
 This action makes a number of outputs available:
 
-> **Note:** The [action metadata file] contains the actual definitions for these
-> outputs. The example below should give you some idea what each output looks
-> like. The outputs aren't actually YAML of course, it's just for explanatory
-> purposes.
+> [!TIP]
+> The [action metadata file] contains the actual definitions for these outputs.
+> The example below should give you some idea what each output looks like. The
+> outputs aren't actually YAML of course, it's just for explanatory purposes.
 
 [action metadata file]: action.yml
 
@@ -719,6 +1006,18 @@ releaseBody: |
   This is the first _stable_ release 🎉
 
   ## What's Changed ...
+
+# Contains "true" if the release is the latest release after publishing.
+releaseIsLatest: "true"
+
+# The ID of the latest release.
+latestReleaseId: "68429422"
+
+# The URL of the latest release.
+latestReleaseUrl: https://github.com/owner/repo/releases/tag/1.0.0
+
+# The name of the latest release.
+latestReleaseName: 1.0.0 Leopard Venom 🐆
 
 # The avatar URL of the GitHub user who created the tag.
 taggerAvatarUrl: https://avatars.githubusercontent.com/u/100152?u=2d625417e12ad2b9cf55a3897e9a36b1bc145133&v=4
@@ -778,7 +1077,10 @@ assets: |
       "size": 16,
       "downloadCount": 0,
       "createdAt": "2022-06-02T09:37:56Z",
-      "updatedAt": "2022-06-02T09:37:56Z"
+      "updatedAt": "2022-06-02T09:37:56Z",
+      "checksum": {
+        "sha256": "2fef44d096530d162c859b5b4ec0895c308845cad1eebd7ef582c5ebd2dd787d"
+      }
     },
     ...
   ]
@@ -791,7 +1093,7 @@ add an `id` to the step that uses this action, and reference the output you
 need as demonstrated below:
 
 ```yaml
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   id: publishRelease
 - env:
     RELEASE_URL: ${{ steps.publishRelease.outputs.releaseUrl }}
@@ -801,10 +1103,11 @@ need as demonstrated below:
 The `assets` output is a JSON array, and needs to be decoded before its contents
 can be accessed:
 
-> **Note:** The assets are ordered by their `name` property.
+> [!TIP]
+> The assets are ordered by their `name` property.
 
 ```yaml
-- uses: ghalactic/github-release-from-tag@v4
+- uses: ghalactic/github-release-from-tag@v6
   id: publishRelease
 - env:
     DOWNLOAD_URL: ${{ fromJSON(steps.publishRelease.outputs.assets)[0].downloadUrl }}

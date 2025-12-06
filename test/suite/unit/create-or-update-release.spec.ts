@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { validateConfig } from "../../../src/config/validation.js";
 import { createOrUpdateRelease } from "../../../src/release.js";
 import { group, info } from "../../mocks/actions-core.js";
@@ -12,15 +13,17 @@ describe("createOrUpdateRelease()", () => {
       discussion: {},
       draft: false,
     }),
+    createMakeLatest: "true",
     group,
     info,
+    isPreRelease: false,
     owner: "owner-a",
-    repo: "repo-a",
     releaseBody: "release-body-a",
+    repo: "repo-a",
     tag: "tag-a",
     tagSubject: "tag-subject-a",
-    isStable: true,
-  };
+    updateMakeLatest: "false",
+  } as const;
 
   const defaultExpectation = {
     owner: "owner-a",
@@ -34,7 +37,7 @@ describe("createOrUpdateRelease()", () => {
 
   const releaseId = "owner-a.repo-a.tag-a";
 
-  it("should create a new release when no matching release exists", async () => {
+  it("creates a new release when no matching release exists", async () => {
     const repos = createRepos();
 
     const [actual, wasCreated] = await createOrUpdateRelease({
@@ -43,10 +46,13 @@ describe("createOrUpdateRelease()", () => {
     });
 
     expect(wasCreated).toBe(true);
-    expect(actual).toMatchObject(defaultExpectation);
+    expect(actual).toMatchObject({
+      ...defaultExpectation,
+      make_latest: "true",
+    });
   });
 
-  it("should update the existing release when a matching release exists", async () => {
+  it("updates the existing release when a matching release exists", async () => {
     const repos = createRepos({
       createReleaseError: createAlreadyExistsError(),
     });
@@ -60,23 +66,24 @@ describe("createOrUpdateRelease()", () => {
     expect(actual).toMatchObject({
       ...defaultExpectation,
       release_id: releaseId,
+      make_latest: "false",
     });
   });
 
-  it("should honor the isStable option", async () => {
+  it("honors the isPreRelease option", async () => {
     const repos = createRepos();
 
     const [actual, wasCreated] = await createOrUpdateRelease({
       ...staticParams,
       repos,
-      isStable: false,
+      isPreRelease: true,
     });
 
     expect(wasCreated).toBe(true);
     expect(actual).toMatchObject({ ...defaultExpectation, prerelease: true });
   });
 
-  it("should honor the config.draft option", async () => {
+  it("honors the config.draft option", async () => {
     const repos = createRepos();
 
     const config = { ...staticParams.config, draft: true };
@@ -90,19 +97,19 @@ describe("createOrUpdateRelease()", () => {
     expect(actual).toMatchObject({ ...defaultExpectation, draft: true });
   });
 
-  describe("error propagation", () => {
-    it("should propagate errors during release creation", async () => {
+  describe("Error propagation", () => {
+    it("propagates errors during release creation", async () => {
       const error = new Error("error-a");
       const repos = createRepos({
         createReleaseError: error,
       });
 
       await expect(() =>
-        createOrUpdateRelease({ ...staticParams, repos })
+        createOrUpdateRelease({ ...staticParams, repos }),
       ).rejects.toThrow(error);
     });
 
-    it("should propagate errors during reading of existing releases", async () => {
+    it("propagates errors during reading of existing releases", async () => {
       const error = new Error("error-a");
       const repos = createRepos({
         createReleaseError: createAlreadyExistsError(),
@@ -110,11 +117,11 @@ describe("createOrUpdateRelease()", () => {
       });
 
       await expect(() =>
-        createOrUpdateRelease({ ...staticParams, repos })
+        createOrUpdateRelease({ ...staticParams, repos }),
       ).rejects.toThrow(error);
     });
 
-    it("should propagate errors during updating of existing releases", async () => {
+    it("propagates errors during updating of existing releases", async () => {
       const error = new Error("error-a");
       const repos = createRepos({
         createReleaseError: createAlreadyExistsError(),
@@ -122,7 +129,7 @@ describe("createOrUpdateRelease()", () => {
       });
 
       await expect(() =>
-        createOrUpdateRelease({ ...staticParams, repos })
+        createOrUpdateRelease({ ...staticParams, repos }),
       ).rejects.toThrow(error);
     });
   });

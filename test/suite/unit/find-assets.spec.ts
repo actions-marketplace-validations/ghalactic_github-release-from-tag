@@ -1,26 +1,34 @@
-import { mockProcessStdout } from "jest-mock-process";
 import { join } from "path";
+import { fileURLToPath } from "url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findAssets } from "../../../src/asset.js";
 import { WarningFn } from "../../../src/type/actions.js";
 import { info, warning } from "../../mocks/actions-core.js";
 
 const { chdir, cwd } = process;
-const fixturesPath = join(__dirname, "../../fixture/find-assets");
+const fixturesPath = fileURLToPath(
+  new URL("../../fixture/find-assets", import.meta.url),
+);
 
 describe("findAssets()", () => {
-  let mockStdout: ReturnType<typeof mockProcessStdout>, originalCwd: string;
+  let originalCwd: string;
 
   beforeEach(async () => {
-    mockStdout = mockProcessStdout();
+    vi.spyOn(process.stdout, "write").mockImplementation((...args) => {
+      const cb = args.find((a) => typeof a === "function");
+      cb?.();
+
+      return true;
+    });
     originalCwd = cwd();
   });
 
   afterEach(async () => {
     chdir(originalCwd);
-    mockStdout.mockRestore();
+    vi.restoreAllMocks();
   });
 
-  it("should find assets when the pattern matches a single file", async () => {
+  it("finds assets when the pattern matches a single file", async () => {
     const fixturePath = join(fixturesPath, "singular");
     chdir(fixturePath);
 
@@ -57,7 +65,7 @@ describe("findAssets()", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("should apply custom names and labels when the pattern matches a single file", async () => {
+  it("applies custom names and labels when the pattern matches a single file", async () => {
     const fixturePath = join(fixturesPath, "singular");
     chdir(fixturePath);
 
@@ -82,7 +90,7 @@ describe("findAssets()", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("should find assets when the pattern matches multiple files", async () => {
+  it("finds assets when the pattern matches multiple files", async () => {
     const fixturePath = join(fixturesPath, "multiple");
     chdir(fixturePath);
 
@@ -113,7 +121,7 @@ describe("findAssets()", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("should not apply custom names or labels when the pattern matches multiple files", async () => {
+  it("doesn't apply custom names or labels when the pattern matches multiple files", async () => {
     const fixturePath = join(fixturesPath, "multiple");
     chdir(fixturePath);
 
@@ -144,7 +152,7 @@ describe("findAssets()", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("should warn about duplicate assets", async () => {
+  it("warns about duplicate assets", async () => {
     const fixturePath = join(fixturesPath, "multiple");
     chdir(fixturePath);
 
@@ -173,14 +181,14 @@ describe("findAssets()", () => {
     ]);
 
     expect(actual).toContain(
-      'Release asset "file-a.1468898034.txt" found multiple times. Only the first instance will be used.'
+      'Release asset "file-a.1468898034.txt" found multiple times. Only the first instance will be used.',
     );
     expect(actual).toContain(
-      'Release asset "file-a.4228738524.txt" found multiple times. Only the first instance will be used.'
+      'Release asset "file-a.4228738524.txt" found multiple times. Only the first instance will be used.',
     );
   });
 
-  it("should skip duplicate assets where the names differ only by case", async () => {
+  it("skips duplicate assets where the names differ only by case", async () => {
     const fixturePath = join(fixturesPath, "case-insensitivity");
     chdir(fixturePath);
 
@@ -203,11 +211,11 @@ describe("findAssets()", () => {
     ]);
 
     expect(actual).toContain(
-      'Release asset "FILE-A.txt" found multiple times. Only the first instance will be used.'
+      'Release asset "FILE-A.txt" found multiple times. Only the first instance will be used.',
     );
   });
 
-  it("should fail when the pattern matches no files", async () => {
+  it("fails when the pattern matches no files", async () => {
     chdir(fixturesPath);
 
     async function actual() {
@@ -222,7 +230,7 @@ describe("findAssets()", () => {
     }
 
     await expect(actual).rejects.toThrow(
-      'No release assets found for mandatory asset with path glob pattern "path/to/nonexistent.*"'
+      'No release assets found for mandatory asset with path glob pattern "path/to/nonexistent.*"',
     );
   });
 });

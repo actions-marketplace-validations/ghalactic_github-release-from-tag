@@ -1,4 +1,5 @@
 import { create as createGlob } from "@actions/glob";
+import { createHash } from "crypto";
 import { readFile, stat } from "fs/promises";
 import { lookup } from "mime-types";
 import { basename } from "path";
@@ -51,7 +52,7 @@ export async function modifyReleaseAssets({
     const [uploadResults, updateResults] = await Promise.all([
       Promise.allSettled(toUpload.map((desired) => uploadAsset(desired))),
       Promise.allSettled(
-        toUpdate.map(([existing, desired]) => updateAsset(existing, desired))
+        toUpdate.map(([existing, desired]) => updateAsset(existing, desired)),
       ),
     ]);
 
@@ -62,19 +63,32 @@ export async function modifyReleaseAssets({
       info,
       error,
       uploadResult,
-      "{successCount} uploaded, {failureCount} failed to upload"
+      "{successCount} uploaded, {failureCount} failed to upload",
     );
     logResults(
       info,
       error,
       updateResult,
-      "{successCount} updated, {failureCount} failed to update"
+      "{successCount} updated, {failureCount} failed to update",
     );
 
-    const isSuccess = uploadResult.isSuccess && updateResult.isSuccess;
     const sortedAssets = [...uploadResult.assets, ...updateResult.assets].sort(
-      compareAsset
+      compareAsset,
     );
+
+    let checksumsResult: boolean;
+
+    if (config.checksum.generateAssets) {
+      checksumsResult = await uploadOrUpdateChecksumAssets(
+        existingAssets,
+        sortedAssets,
+      );
+    } else {
+      checksumsResult = true;
+    }
+
+    const isSuccess =
+      uploadResult.isSuccess && updateResult.isSuccess && checksumsResult;
 
     return [isSuccess, sortedAssets];
   });
@@ -83,7 +97,7 @@ export async function modifyReleaseAssets({
     info(
       `Deleting existing release asset ${JSON.stringify(existing.name)} (${
         existing.id
-      })`
+      })`,
     );
 
     await repos.deleteReleaseAsset({
@@ -95,7 +109,7 @@ export async function modifyReleaseAssets({
 
   async function updateAsset(
     existing: AssetData,
-    desired: AssetConfig
+    desired: AssetConfig,
   ): Promise<NormalizedAsset> {
     await deleteAsset(existing);
 
@@ -107,9 +121,12 @@ export async function modifyReleaseAssets({
     const { label, name, path } = desired;
     const contentType = lookup(path) || "application/octet-stream";
     const data = await readFile(path);
+    const sha256 = createHash("sha256").update(data).digest("hex");
 
     info(
-      `Uploading release asset ${JSON.stringify(desired.name)} (${contentType})`
+      `Uploading release asset ${JSON.stringify(
+        desired.name,
+      )} (${contentType})`,
     );
 
     const { data: assetData } = (await request({
@@ -123,23 +140,91 @@ export async function modifyReleaseAssets({
       },
     })) as { data: AssetData };
 
-    const normalized = normalizeAssetData(assetData);
+    const normalized = normalizeAssetData(assetData, { sha256 });
     info(
       `Uploaded release asset ${JSON.stringify(desired.name)}: ${JSON.stringify(
         normalized,
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
 
     return normalized;
+  }
+
+  async function uploadOrUpdateChecksumAsset(
+    existingAssets: AssetData[],
+    name: string,
+    contentType: string,
+    data: string,
+    label: string,
+  ): Promise<void> {
+    const existing = existingAssets.find((asset) => asset.name === name);
+
+    if (existing) {
+      info(
+        `Deleting existing checksum asset ${JSON.stringify(existing.name)} (${
+          existing.id
+        })`,
+      );
+
+      await repos.deleteReleaseAsset({
+        owner,
+        repo,
+        asset_id: existing.id,
+      });
+    }
+
+    const { upload_url: url } = release;
+
+    info(`Uploading checksum asset ${JSON.stringify(name)}`);
+
+    const { data: assetData } = (await request({
+      method: "POST",
+      url,
+      name,
+      data,
+      label,
+      headers: {
+        "Content-Type": contentType,
+      },
+    })) as { data: AssetData };
+
+    info(`Uploaded checksum asset ${JSON.stringify(name)}`);
+  }
+
+  async function uploadOrUpdateChecksumAssets(
+    existingAssets: AssetData[],
+    assets: NormalizedAsset[],
+  ): Promise<boolean> {
+    const sha256sumData = renderChecksumAsset("sha256", assets);
+    const jsonData = renderJSONChecksumAsset(assets);
+
+    const results = await Promise.allSettled([
+      uploadOrUpdateChecksumAsset(
+        existingAssets,
+        "checksums.sha256",
+        "text/plain",
+        sha256sumData,
+        "Checksums (sha256sum)",
+      ),
+      uploadOrUpdateChecksumAsset(
+        existingAssets,
+        "checksums.json",
+        "application/json",
+        jsonData,
+        "Checksums (JSON)",
+      ),
+    ]);
+
+    return results.every((result) => result.status === "fulfilled");
   }
 }
 
 export async function findAssets(
   info: InfoFn,
   warning: WarningFn,
-  assets: AssetConfig[]
+  assets: AssetConfig[],
 ): Promise<AssetConfig[]> {
   const found = [];
   for (const asset of assets) found.push(...(await findAsset(info, asset)));
@@ -157,7 +242,7 @@ export async function findAssets(
 
     const quotedName = JSON.stringify(name);
     warning(
-      `Release asset ${quotedName} found multiple times. Only the first instance will be used.`
+      `Release asset ${quotedName} found multiple times. Only the first instance will be used.`,
     );
 
     return false;
@@ -166,7 +251,7 @@ export async function findAssets(
 
 async function findAsset(
   info: InfoFn,
-  asset: AssetConfig
+  asset: AssetConfig,
 ): Promise<AssetConfig[]> {
   const { path: pattern, optional: isOptional } = asset;
   const globber = await createGlob(pattern);
@@ -183,14 +268,14 @@ async function findAsset(
 
     if (isOptional) {
       info(
-        `No release assets found for optional asset with path glob pattern ${quotedPattern}`
+        `No release assets found for optional asset with path glob pattern ${quotedPattern}`,
       );
 
       return [];
     }
 
     throw new Error(
-      `No release assets found for mandatory asset with path glob pattern ${quotedPattern}`
+      `No release assets found for mandatory asset with path glob pattern ${quotedPattern}`,
     );
   }
 
@@ -224,14 +309,14 @@ function normalizeAssetConfig({
 
 function diffAssets(
   existingAssets: AssetData[],
-  desiredAssets: AssetConfig[]
+  desiredAssets: AssetConfig[],
 ): { toUpdate: [AssetData, AssetConfig][]; toUpload: AssetConfig[] } {
   const toUpdate: [AssetData, AssetConfig][] = [];
   const toUpload: AssetConfig[] = [];
 
   for (const desired of desiredAssets) {
     const existing = existingAssets.find(
-      (existing) => existing.name === desired.name
+      (existing) => existing.name === desired.name,
     );
 
     if (existing == null) {
@@ -247,6 +332,30 @@ function diffAssets(
   };
 }
 
+function renderChecksumAsset(
+  type: keyof AssetChecksums,
+  assets: NormalizedAsset[],
+): string {
+  return (
+    assets.map((asset) => `${asset.checksum[type]}  ${asset.name}`).join("\n") +
+    "\n"
+  );
+}
+
+function renderJSONChecksumAsset(assets: NormalizedAsset[]): string {
+  return (
+    JSON.stringify(
+      {
+        sha256: Object.fromEntries(
+          assets.map((asset) => [asset.name, asset.checksum.sha256]),
+        ),
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+}
+
 type ResultAnalysis = {
   isSuccess: boolean;
   successCount: number;
@@ -256,7 +365,7 @@ type ResultAnalysis = {
 };
 
 function analyzeResults(
-  results: PromiseSettledResult<NormalizedAsset>[]
+  results: PromiseSettledResult<NormalizedAsset>[],
 ): ResultAnalysis {
   let isSuccess = true;
   let successCount = 0;
@@ -288,7 +397,7 @@ async function logResults(
   info: InfoFn,
   error: ErrorFn,
   resultAnalysis: ResultAnalysis,
-  messageTemplate: string
+  messageTemplate: string,
 ): Promise<void> {
   const { successCount, failureCount, failureReasons } = resultAnalysis;
   const message = messageTemplate
@@ -317,9 +426,17 @@ type NormalizedAsset = {
   downloadCount: AssetData["download_count"];
   createdAt: AssetData["created_at"];
   updatedAt: AssetData["updated_at"];
+  checksum: AssetChecksums;
 };
 
-function normalizeAssetData(data: AssetData): NormalizedAsset {
+type AssetChecksums = {
+  sha256: string;
+};
+
+function normalizeAssetData(
+  data: AssetData,
+  checksum: AssetChecksums,
+): NormalizedAsset {
   const {
     url: apiUrl,
     browser_download_url: downloadUrl,
@@ -348,6 +465,7 @@ function normalizeAssetData(data: AssetData): NormalizedAsset {
     downloadCount,
     createdAt,
     updatedAt,
+    checksum,
   };
 }
 

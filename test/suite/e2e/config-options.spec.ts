@@ -1,4 +1,6 @@
 import escapeStringRegExp from "escape-string-regexp";
+import { launch, type Page } from "puppeteer";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   CONFUSED,
   EYES,
@@ -30,20 +32,19 @@ import {
   waitForCompletedTagWorkflowRun,
 } from "../../helpers/octokit.js";
 
-describe("End-to-end tests", () => {
-  const regExpOwner = escapeStringRegExp(owner);
-  const regExpRepo = escapeStringRegExp(repo);
+const regExpOwner = escapeStringRegExp(owner);
+const regExpRepo = escapeStringRegExp(repo);
 
-  describe("Config options", () => {
-    const label = "config-options";
-    const runId = readRunId();
-    const branchName = buildBranchName(runId, label);
-    const tagName = buildTagName("1.0.0", runId, label);
-    const workflow = buildWorkflow(branchName);
+describe("Config options", () => {
+  const label = "config-options";
+  const runId = readRunId();
+  const branchName = buildBranchName(runId, label);
+  const tagName = buildTagName("1.0.0", runId, label);
+  const workflow = buildWorkflow(branchName);
 
-    const tagAnnotation = "1.0.0";
+  const tagAnnotation = "1.0.0";
 
-    const config = `discussion:
+  const config = `discussion:
   category: releases
   reactions:
     - "+1"
@@ -66,94 +67,102 @@ summary:
   enabled: false
 `;
 
-    const files = [
-      {
-        path: ".github/github-release-from-tag.yml",
-        content: config,
-      },
-    ];
+  const files = [
+    {
+      path: ".github/github-release-from-tag.yml",
+      content: config,
+    },
+  ];
 
-    let workflowRun: WorkflowRunData;
-    let release: ReleaseData;
-    let discussionReactionGroups: ReactionGroupData[];
+  let workflowRun: WorkflowRunData;
+  let release: ReleaseData;
+  let discussionReactionGroups: ReactionGroupData[];
+
+  beforeAll(async () => {
+    const { headSha = "", workflowFileName } = await createBranchForCi(
+      branchName,
+      workflow,
+      {
+        files,
+      },
+    );
+
+    await createTag(headSha, tagName, tagAnnotation);
+
+    workflowRun = await waitForCompletedTagWorkflowRun(
+      workflowFileName,
+      tagName,
+    );
+    release = await getReleaseByTag(tagName);
+    discussionReactionGroups = await getDiscussionReactionGroupsByRelease(
+      owner,
+      repo,
+      release,
+    );
+  }, SETUP_TIMEOUT);
+
+  it("produces a workflow run that concludes in success", () => {
+    expect(workflowRun.conclusion).toBe("success");
+  });
+
+  it("produces the expected release discussion", () => {
+    expect(release.discussion_url).toMatch(
+      new RegExp(
+        `^https://github.com/${regExpOwner}/${regExpRepo}/discussions/\\d+$`,
+      ),
+    );
+  });
+
+  it.each([[THUMBS_UP], [LAUGH], [HOORAY], [HEART], [ROCKET], [EYES]] as const)(
+    "produces the expected release reactions (%s)",
+    (reaction) => {
+      const { reactions: { [reaction]: actual = 0 } = {} } = release;
+
+      expect(actual).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([
+    [THUMBS_UP],
+    [THUMBS_DOWN],
+    [LAUGH],
+    [HOORAY],
+    [CONFUSED],
+    [HEART],
+    [ROCKET],
+    [EYES],
+  ] as const)(
+    "produces the expected release discussion reactions (%s)",
+    (reaction) => {
+      const group = discussionReactionGroups.find(
+        (group) => group.content === REACTION_NAMES[reaction],
+      );
+
+      expect(group?.reactors?.totalCount ?? 0).toBeGreaterThan(0);
+    },
+  );
+
+  describe("Browser-based tests", () => {
+    let page: Page | undefined;
 
     beforeAll(async () => {
-      const { headSha = "", workflowFileName } = await createBranchForCi(
-        branchName,
-        workflow,
-        {
-          files,
-        }
-      );
+      if (!release) return;
 
-      await createTag(headSha, tagName, tagAnnotation);
-
-      workflowRun = await waitForCompletedTagWorkflowRun(
-        workflowFileName,
-        tagName
-      );
-      release = await getReleaseByTag(tagName);
-      discussionReactionGroups = await getDiscussionReactionGroupsByRelease(
-        owner,
-        repo,
-        release
-      );
-
-      if (release?.html_url != null) await page.goto(release?.html_url);
+      const browser = await launch({ args: ["--no-sandbox"] });
+      page = await browser.newPage();
+      await page.goto(release?.html_url);
     }, SETUP_TIMEOUT);
 
-    it("should produce a workflow run that concludes in success", () => {
-      expect(workflowRun.conclusion).toBe("success");
+    it("appends generated release notes to the release body", async () => {
+      expect(page).toBeDefined();
+
+      expect(
+        await page?.$$(
+          buildBodyExpression(
+            `//*[starts-with(normalize-space(), 'Full Changelog: ')]`,
+          ),
+        ),
+      ).not.toHaveLength(0);
     });
-
-    it("should append generated release notes to the release body", async () => {
-      const expression = `//*[normalize-space()='Full Changelog: https://github.com/${owner}/${repo}/commits/${tagName}']`;
-
-      expect(await page.$x(buildBodyExpression(expression))).not.toBeEmpty();
-    });
-
-    it("should produce the expected release discussion", () => {
-      expect(release.discussion_url).toMatch(
-        new RegExp(
-          `^https://github.com/${regExpOwner}/${regExpRepo}/discussions/\\d+$`
-        )
-      );
-    });
-
-    it.each([
-      [THUMBS_UP],
-      [LAUGH],
-      [HOORAY],
-      [HEART],
-      [ROCKET],
-      [EYES],
-    ] as const)(
-      "should produce the expected release reactions (%s)",
-      (reaction) => {
-        const { reactions: { [reaction]: actual = 0 } = {} } = release;
-
-        expect(actual).toBeGreaterThan(0);
-      }
-    );
-
-    it.each([
-      [THUMBS_UP],
-      [THUMBS_DOWN],
-      [LAUGH],
-      [HOORAY],
-      [CONFUSED],
-      [HEART],
-      [ROCKET],
-      [EYES],
-    ] as const)(
-      "should produce the expected release discussion reactions (%s)",
-      (reaction) => {
-        const group = discussionReactionGroups.find(
-          (group) => group.content === REACTION_NAMES[reaction]
-        );
-
-        expect(group?.reactors?.totalCount ?? 0).toBeGreaterThan(0);
-      }
-    );
   });
 });

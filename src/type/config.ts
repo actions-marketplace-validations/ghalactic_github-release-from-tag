@@ -1,4 +1,9 @@
+import type { MakeLatestStrategy } from "./make-latest-strategy.js";
 import { DiscussionReaction, ReleaseReaction } from "./reaction.js";
+
+export type ChecksumConfig = {
+  generateAssets: boolean;
+};
 
 export type DiscussionConfig = {
   category: string;
@@ -11,9 +16,11 @@ export type SummaryConfig = {
 
 export type Config = {
   assets: AssetConfig[];
+  checksum: ChecksumConfig;
   discussion: DiscussionConfig;
   draft: boolean;
   generateReleaseNotes: boolean;
+  makeLatest: MakeLatestStrategy;
   prerelease: boolean;
   reactions: ReleaseReaction[];
   summary: SummaryConfig;

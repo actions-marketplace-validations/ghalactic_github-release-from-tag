@@ -1,7 +1,7 @@
 import {
   AlignType,
-  Content,
   PhrasingContent,
+  RootContent,
   Table,
   TableCell,
   TableRow,
@@ -14,11 +14,15 @@ import { ReleaseData, TaggerData } from "./type/octokit.js";
 const BODY_TOKEN = "{{GITHUB_RELEASE_ACTION_BODY}}";
 
 export function renderSummary({
+  isLatest,
+  latestRelease,
   release,
   tagger,
   tagHtmlUrl,
   wasCreated,
 }: {
+  isLatest: boolean;
+  latestRelease?: ReleaseData;
   release: ReleaseData;
   tagger?: TaggerData;
   tagHtmlUrl: string;
@@ -26,7 +30,7 @@ export function renderSummary({
 }): string {
   const { discussion_url, draft, html_url, prerelease, tag_name } = release;
   const body = release.body ?? "";
-  const name = release.name ?? "";
+  const name = release.name ?? tag_name;
   const hasTagger = tagger?.avatarUrl && tagger?.login;
 
   const rendered = toMarkdown(
@@ -42,12 +46,13 @@ export function renderSummary({
     },
     {
       extensions: [gfmToMarkdown()],
-    }
+      emphasis: "_",
+    },
   );
 
   return rendered.replace(BODY_TOKEN, body);
 
-  function titleAST(): Content[] {
+  function titleAST(): RootContent[] {
     const action = (() => {
       if (draft) return wasCreated ? "Drafted release " : "Re-drafted release ";
       return wasCreated ? "Released " : "Re-released ";
@@ -79,7 +84,7 @@ export function renderSummary({
     ];
   }
 
-  function taggerAST(): Content[] {
+  function taggerAST(): RootContent[] {
     if (!hasTagger) return [];
 
     const { avatarUrl, login } = tagger;
@@ -105,12 +110,12 @@ export function renderSummary({
             },
           ],
         ],
-        []
+        [],
       ),
     ];
   }
 
-  function detailsAST(): Content[] {
+  function detailsAST(): RootContent[] {
     const headings: PhrasingContent[][] = [
       [
         {
@@ -122,6 +127,12 @@ export function renderSummary({
         {
           type: "text",
           value: "Stability",
+        },
+      ],
+      [
+        {
+          type: "text",
+          value: "Latest",
         },
       ],
     ];
@@ -147,6 +158,23 @@ export function renderSummary({
           value: prerelease ? "⚠️ Pre-release" : "✅ Stable",
         },
       ],
+      latestRelease
+        ? [
+            ...(isLatest ? ([{ type: "text", value: "✅ " }] as const) : []),
+            {
+              type: "linkReference",
+              identifier: "latest-release-url",
+              label: "latest-release-url",
+              referenceType: "full",
+              children: [
+                {
+                  type: "text",
+                  value: latestRelease.name ?? latestRelease.tag_name,
+                },
+              ],
+            },
+          ]
+        : [{ type: "emphasis", children: [{ type: "text", value: "(none)" }] }],
     ];
 
     if (discussion_url) {
@@ -177,7 +205,7 @@ export function renderSummary({
     return [createTableAST(align, headings, [cells])];
   }
 
-  function bodyAST(): Content[] {
+  function bodyAST(): RootContent[] {
     if (!body.trim()) return [];
 
     return createDetailsAST("<strong>Release body</strong>", [
@@ -188,8 +216,8 @@ export function renderSummary({
     ]);
   }
 
-  function definitionsAST(): Content[] {
-    const definitions: Content[] = [];
+  function definitionsAST(): RootContent[] {
+    const definitions: RootContent[] = [];
 
     if (discussion_url) {
       definitions.push({
@@ -197,6 +225,16 @@ export function renderSummary({
         identifier: "discussion-url",
         label: "discussion-url",
         url: discussion_url,
+        title: null,
+      });
+    }
+
+    if (latestRelease) {
+      definitions.push({
+        type: "definition",
+        identifier: "latest-release-url",
+        label: "latest-release-url",
+        url: latestRelease.html_url,
         title: null,
       });
     }
@@ -215,7 +253,7 @@ export function renderSummary({
         label: "tag-url",
         url: tagHtmlUrl,
         title: null,
-      }
+      },
     );
 
     return definitions;
@@ -223,8 +261,8 @@ export function renderSummary({
 
   function createDetailsAST(
     summaryHTML: string,
-    children: Content[]
-  ): Content[] {
+    children: RootContent[],
+  ): RootContent[] {
     return [
       {
         type: "html",
@@ -241,7 +279,7 @@ export function renderSummary({
   function createTableAST(
     align: AlignType[] | undefined,
     headings: PhrasingContent[][],
-    rows: PhrasingContent[][][]
+    rows: PhrasingContent[][][],
   ): Table {
     return {
       type: "table",
@@ -261,9 +299,9 @@ export function renderSummary({
               (children): TableCell => ({
                 type: "tableCell",
                 children,
-              })
+              }),
             ),
-          })
+          }),
         ),
       ],
     };

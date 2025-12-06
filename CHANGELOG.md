@@ -7,6 +7,254 @@ Versioning].
 [keep a changelog]: https://keepachangelog.com/
 [semantic versioning]: https://semver.org/
 
+## [v6.1.0] - 2025-09-30
+
+[v6.1.0]: https://github.com/ghalactic/github-release-from-tag/releases/v6.1.0
+
+### Added
+
+- Added [latest release management].
+
+[latest release management]: #latest-release-management
+
+#### Latest release management
+
+This action can now manage when published releases are set as the [latest
+release] for the repo.
+
+[latest release]: https://docs.github.com/repositories/releasing-projects-on-github/about-releases#linking-to-the-latest-release
+
+By default, releases created by this action will be marked as the latest release
+if they are newly created, non-draft, stable releases. Other strategies for when
+to set the latest release can be configured via the `makeLatest` action input or
+configuration option. Strategies include:
+
+- `if-new`: Set the release as latest if it is newly created. This is the
+  default strategy.
+- `semver`: Set the release as latest if it's a SemVer version greater than the
+  current latest release.
+- `legacy`: Defer to GitHub's legacy behavior for choosing latest releases.
+- `always`: Always set the release as latest, even if it's not newly created.
+- `never`: Never set the release as latest.
+
+## [v6.0.1] - 2025-09-03
+
+[v6.0.1]: https://github.com/ghalactic/github-release-from-tag/releases/v6.0.1
+
+### Fixed
+
+- Bumped schema version numbers to match the major version number.
+- Updated examples in the docs to refer to the latest version.
+
+## [v6.0.0] - 2025-09-03
+
+[v6.0.0]: https://github.com/ghalactic/github-release-from-tag/releases/v6.0.0
+
+### Changed
+
+- This action now runs on the `node24` runner instead of `node20`. If you are
+  using this action on GitHub Enterprise Server, you will need to ensure your
+  runners support `node24` before upgrading to this version.
+
+## [v5.4.0] - 2024-08-27
+
+[v5.4.0]: https://github.com/ghalactic/github-release-from-tag/releases/v5.4.0
+
+### Added
+
+- Added [config file schema support].
+
+[config file schema support]: #config-file-schema-support
+
+#### Config file schema support
+
+The configuration schema is now published at:
+https://ghalactic.github.io/github-release-from-tag/schema/config.v5.schema.json
+
+Your editor might be able to use this schema to provide autocompletion and
+validation for your configuration file. For example, if you're using the [YAML
+extension for Visual Studio Code], you can add the following header to your
+configuration file to enable schema support:
+
+[yaml extension for visual studio code]: https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml
+
+```yaml
+# yaml-language-server: $schema=https://ghalactic.github.io/github-release-from-tag/schema/config.v5.schema.json
+assets:
+  - path: assets/text/file-a.txt
+  - path: assets/json/file-b.json
+    optional: true
+    name: custom-name-b.json
+    label: Label for file-b.json
+```
+
+In case your editor supports using a `$schema` property directly in the YAML
+file, the schema has been relaxed to allow this as well:
+
+```yaml
+$schema: https://ghalactic.github.io/github-release-from-tag/schema/config.v5.schema.json
+assets:
+  - path: assets/text/file-a.txt
+  - path: assets/json/file-b.json
+    optional: true
+    name: custom-name-b.json
+    label: Label for file-b.json
+```
+
+### Fixed
+
+- Fixed parsing of empty configuration files with comments.
+
+## [v5.3.0] - 2024-08-24
+
+[v5.3.0]: https://github.com/ghalactic/github-release-from-tag/releases/v5.3.0
+
+### Added
+
+- [Markdown heading anchors] are now added to release bodies.
+
+[markdown heading anchors]: #markdown-heading-anchors
+
+#### Markdown heading anchors
+
+Anchors are now added to headings in the release body. This makes it possible to
+link directly to a specific section of the release body, either from within the
+release body itself, or externally once the release is created. You would
+probably expect GitHub to do this as a part of its release body rendering, just
+like it does for READMEs, but surprisingly it doesn't. So, now this action will
+do it for you.
+
+## [v5.2.1] - 2024-06-09
+
+[v5.2.1]: https://github.com/ghalactic/github-release-from-tag/releases/v5.2.1
+
+### Fixed
+
+- Dependency updates.
+
+## [v5.2.0] - 2024-03-09
+
+[v5.2.0]: https://github.com/ghalactic/github-release-from-tag/releases/v5.2.0
+
+### Added
+
+- This action now uploads [checksum assets] when a release has assets associated
+  with it. Checksum assets are files that contain the checksums of the other
+  release assets. This feature is enabled by default, but can be disabled via
+  configuration.
+- Asset checksums are now available in the `assets` output. These checksums are
+  always available, even if the checksum assets feature is disabled.
+
+[checksum assets]: https://github.com/ghalactic/github-release-from-tag/tree/v5.2.0#checksum-assets
+
+## [v5.1.1] - 2024-03-07
+
+[v5.1.1]: https://github.com/ghalactic/github-release-from-tag/releases/v5.1.1
+
+### Fixed
+
+- Updated example workflow to use the `inputs` context instead of
+  `github.event.inputs`. This is now possible because GitHub [unified their
+  Actions inputs across manual and reusable workflows].
+
+[unified their Actions inputs across manual and reusable workflows]: https://github.blog/changelog/2022-06-10-github-actions-inputs-unified-across-manual-and-reusable-workflows/
+
+## [v5.1.0] - 2024-03-07
+
+[v5.1.0]: https://github.com/ghalactic/github-release-from-tag/releases/v5.1.0
+
+### Added
+
+- [GitHub Markdown alerts] are now supported in tag annotation bodies.
+
+[github markdown alerts]: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts
+
+> [!TIP]
+> This means you can add alerts like this one to your tag annotation bodies, and
+> they will appear in the published release. To add an alert, use the following
+> syntax:
+>
+> ```markdown
+> > [!NOTE]
+> > Useful information that users should know, even when skimming content.
+>
+> > [!TIP]
+> > Helpful advice for doing things better or more easily.
+>
+> > [!IMPORTANT]
+> > Key information users need to know to achieve their goal.
+>
+> > [!WARNING]
+> > Urgent info that needs immediate user attention to avoid problems.
+>
+> > [!CAUTION]
+> > Advises about risks or negative outcomes of certain actions.
+> ```
+
+## [v5.0.1] - 2024-03-06
+
+[v5.0.1]: https://github.com/ghalactic/github-release-from-tag/releases/v5.0.1
+
+### Fixed
+
+- Dependency updates.
+
+## [v5.0.0] - 2023-08-28
+
+[v5.0.0]: https://github.com/ghalactic/github-release-from-tag/releases/v5.0.0
+
+### Changed
+
+- This action now runs on the `node20` runner instead of `node16`. If you are
+  using this action on GitHub Enterprise Server, you will need to ensure your
+  runners support `node20` before upgrading to this version.
+
+## [v4.2.0] - 2023-08-28
+
+[v4.2.0]: https://github.com/ghalactic/github-release-from-tag/releases/v4.2.0
+
+### Changed
+
+- Reverted the `v4` version of this action to run on Node.js `16.x` instead of
+  `20.x`. The switch to `20.x` was causing issues with GitHub Enterprise Server
+  users who don't have support for `node20` runners yet. A `v5` version of this
+  action will be released shortly that will run on Node.js `20.x`.
+
+## [v4.1.3] - 2023-08-26
+
+[v4.1.3]: https://github.com/ghalactic/github-release-from-tag/releases/v4.1.3
+
+### Fixed
+
+- Fixed further internal issues with GitHub Actions shared workflows. No effect
+  on the action itself.
+
+## [v4.1.2] - 2023-08-26
+
+[v4.1.2]: https://github.com/ghalactic/github-release-from-tag/releases/v4.1.2
+
+### Fixed
+
+- Fixed further internal issues with GitHub Actions shared workflows. No effect
+  on the action itself.
+
+## [v4.1.1] - 2023-08-26
+
+[v4.1.1]: https://github.com/ghalactic/github-release-from-tag/releases/v4.1.1
+
+### Fixed
+
+- Fixed internal GitHub Actions shared workflow permissions issues. No effect on
+  the action itself.
+
+## [v4.1.0] - 2023-08-26
+
+[v4.1.0]: https://github.com/ghalactic/github-release-from-tag/releases/v4.1.0
+
+### Changed
+
+- This action now runs on Node.js `20.x` instead of `16.x`.
+
 ## [v4.0.1] - 2023-05-21
 
 [v4.0.1]: https://github.com/ghalactic/github-release-from-tag/releases/v4.0.1

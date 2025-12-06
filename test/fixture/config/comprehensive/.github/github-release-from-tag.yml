@@ -1,9 +1,13 @@
+# yaml-language-server: $schema=https://ghalactic.github.io/github-release-from-tag/schema/config.v6.schema.json
+$schema: https://ghalactic.github.io/github-release-from-tag/schema/config.v6.schema.json
 assets:
   - path: assets/text/file-a.txt
   - path: assets/json/file-b.json
     optional: true
     name: custom-name-b.json
     label: Label for file-b.json
+checksum:
+  generateAssets: false
 discussion:
   category: category-a
   reactions:
@@ -17,6 +21,7 @@ discussion:
     - eyes
 draft: true
 generateReleaseNotes: true
+makeLatest: semver
 prerelease: false
 reactions:
   - "+1"

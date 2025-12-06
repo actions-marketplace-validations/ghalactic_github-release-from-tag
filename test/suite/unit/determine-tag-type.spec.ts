@@ -2,6 +2,7 @@ import { exec } from "@actions/exec";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { determineTagType } from "../../../src/git.js";
 import { group } from "../../mocks/actions-core.js";
 
@@ -34,7 +35,7 @@ describe("determineTagType()", () => {
         "init",
         "--quiet",
         "--initial-branch=main",
-        mainPath
+        mainPath,
       );
       await execGit("-C", mainPath, "config", "user.email", "user@example.org");
       await execGit("-C", mainPath, "config", "user.name", "User");
@@ -43,23 +44,25 @@ describe("determineTagType()", () => {
         mainPath,
         "commit",
         "--quiet",
+        "--no-gpg-sign",
         "--allow-empty",
-        "--message=commit-message-a"
+        "--message=commit-message-a",
       );
       await execGit(
         "-C",
         mainPath,
         "tag",
+        "--no-sign",
         "--annotate",
         "--message=tag-message-a",
-        "tag-a"
+        "tag-a",
       );
       await execGit("-C", mainPath, "tag", "--no-sign", "tag-b"); // signing would create annotated tags
 
       chdir(mainPath);
     });
 
-    it("should determine the tag type for defined tags", async () => {
+    it("determines the tag type for defined tags", async () => {
       expect(await determineTagType({ group, tag: "tag-a", silent })).toEqual([
         true,
         "tag",
@@ -76,7 +79,7 @@ describe("determineTagType()", () => {
       chdir(mainPath);
     });
 
-    it("should fail to determine the tag type", async () => {
+    it("fails to determine the tag type", async () => {
       expect(await determineTagType({ group, tag: "tag-a", silent })).toEqual([
         false,
         "",

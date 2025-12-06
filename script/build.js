@@ -17,9 +17,10 @@ const require = await (async () => {
 await build({
   entryPoints: ["src/main.ts"],
   bundle: true,
+  packages: "bundle",
   sourcemap: true,
   platform: "node",
-  target: "node16",
+  target: "node24",
   format: "esm",
   outfile,
   banner: {

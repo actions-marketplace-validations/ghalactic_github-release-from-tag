@@ -8,6 +8,10 @@ inputs:
       The schema of this value matches the schema for the "assets" config file
       property.
     default: ""
+  checksumGenerateAssets:
+    description: >-
+      Set to "false" to disable generation of checksum assets for the release.
+    default: "" # defaults to the default in the config file (true)
   discussionCategory:
     description: >-
       If specified, a discussion of the specified category is created and linked
@@ -29,6 +33,11 @@ inputs:
       Set to "true" to append automatically generated release notes to the
       release body.
     default: "" # defaults to the default in the config file (false)
+  makeLatest:
+    description: >-
+      Strategy for setting the published release as the repo's latest release.
+      Valid values are "if-new", "semver", "legacy", "always", and "never".
+    default: "" # defaults to the default in the config file ("if-new")
   prerelease:
     description: >-
       Set to "true" or "false" to override the automatic tag name based
@@ -53,7 +62,7 @@ outputs:
       A JSON array of objects describing the assets that were uploaded to the
       release. Each member of the array has the following fields: apiUrl,
       downloadUrl, id, nodeId, name, label, state, contentType, size,
-      downloadCount, createdAt, and updatedAt.
+      downloadCount, createdAt, updatedAt, and checksum.
   generatedReleaseNotes:
     description: >-
       The generated release notes produced by GitHub. This output will only be
@@ -121,5 +130,5 @@ branding:
   icon: tag
   color: green
 runs:
-  using: node16
+  using: node24
   main: dist/main.js

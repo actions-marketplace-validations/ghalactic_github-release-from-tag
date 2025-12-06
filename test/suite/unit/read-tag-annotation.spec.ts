@@ -2,6 +2,7 @@ import { exec } from "@actions/exec";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readTagAnnotation } from "../../../src/git.js";
 import { group } from "../../mocks/actions-core.js";
 
@@ -34,7 +35,7 @@ describe("readTagAnnotation()", () => {
         "init",
         "--quiet",
         "--initial-branch=main",
-        mainPath
+        mainPath,
       );
       await execGit("-C", mainPath, "config", "user.email", "user@example.org");
       await execGit("-C", mainPath, "config", "user.name", "User");
@@ -43,22 +44,24 @@ describe("readTagAnnotation()", () => {
         mainPath,
         "commit",
         "--quiet",
+        "--no-gpg-sign",
         "--allow-empty",
-        "--message=commit-message-a"
+        "--message=commit-message-a",
       );
       await execGit(
         "-C",
         mainPath,
         "tag",
+        "--no-sign",
         "--annotate",
         "--message=subject-a\nsubject-b\n\nbody-a\nbody-b",
-        "tag-a"
+        "tag-a",
       );
 
       chdir(mainPath);
     });
 
-    it("should read the tag subject and body", async () => {
+    it("reads the tag subject and body", async () => {
       expect(await readTagAnnotation({ group, tag: "tag-a", silent })).toEqual([
         true,
         "subject-a subject-b",
@@ -72,7 +75,7 @@ describe("readTagAnnotation()", () => {
       chdir(mainPath);
     });
 
-    it("should fail to read the tag subject and body", async () => {
+    it("fails to read the tag subject and body", async () => {
       expect(await readTagAnnotation({ group, tag: "tag-a", silent })).toEqual([
         false,
         "",

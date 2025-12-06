@@ -1,7 +1,7 @@
 import ajvModule, { ErrorObject } from "ajv";
-import { ASSETS, CONFIG } from "../constant/schema-id.js";
+import assetsSchema from "../schema/assets.v6.schema.json" with { type: "json" };
+import configSchema from "../schema/config.v6.schema.json" with { type: "json" };
 import { AssetConfig, Config } from "../type/config.js";
-import { assets as assetsSchema, config as configSchema } from "./schema.js";
 
 // see https://github.com/ajv-validator/ajv/issues/2132
 const Ajv = ajvModule.default;
@@ -13,13 +13,13 @@ const ajv = new Ajv({
 });
 
 export const validateConfig = createValidate<Config>(
-  CONFIG,
-  "release configuration"
+  configSchema.$id,
+  "release configuration",
 );
 
 export const validateAssets = createValidate<AssetConfig[]>(
-  ASSETS,
-  "release assets configuration"
+  assetsSchema.$id,
+  "release assets configuration",
 );
 
 class ValidateError extends Error {
@@ -34,7 +34,7 @@ class ValidateError extends Error {
 
 function createValidate<T>(
   schemaId: string,
-  label: string
+  label: string,
 ): (value: unknown) => T {
   return function validate(value) {
     const validator = ajv.getSchema(schemaId);
@@ -46,7 +46,7 @@ function createValidate<T>(
 
     const error = new ValidateError(
       `Invalid ${label}:\n${renderErrors(errors)}`,
-      errors
+      errors,
     );
 
     throw error;

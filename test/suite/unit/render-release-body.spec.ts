@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { renderReleaseBody } from "../../../src/body.js";
 import { validateConfig } from "../../../src/config/validation.js";
 import { group, info, setOutput } from "../../mocks/actions-core.js";
@@ -12,19 +13,27 @@ describe("renderReleaseBody()", () => {
     GITHUB_ACTION_REPOSITORY: "action-org/action-repo",
   };
 
-  it("should render release bodies correctly", async () => {
+  it("renders release bodies", async () => {
     const tagBody = `### This should be a heading
 
 This paragraph should have
 no line breaks.
 
-This should be a separate paragraph.`;
+This should be a separate paragraph.
 
-    const expected = `### This should be a heading
+#### Duplicate heading
+
+#### Duplicate *heading*`;
+
+    const expected = `### <a id="this-should-be-a-heading"></a>This should be a heading
 
 This paragraph should have no line breaks.
 
 This should be a separate paragraph.
+
+#### <a id="duplicate-heading"></a>Duplicate heading
+
+#### <a id="duplicate-heading-1"></a>Duplicate *heading*
 
 <!-- published by action-org/action-repo -->`;
 
@@ -46,7 +55,7 @@ This should be a separate paragraph.
     expect(actual).toBe(expected);
   });
 
-  it("should append release notes when there is a tag body", async () => {
+  it("appends release notes when there is a tag body", async () => {
     const tagBody = `body-a`;
 
     const expected = `body-a
@@ -78,7 +87,7 @@ This should be a separate paragraph.
     expect(actual).toBe(expected);
   });
 
-  it("should append release notes when there is no tag body", async () => {
+  it("appends release notes when there is no tag body", async () => {
     const tagBody = "";
 
     const expected = `{
@@ -108,7 +117,7 @@ This should be a separate paragraph.
     expect(actual).toBe(expected);
   });
 
-  it("should support empty tag bodies with no release notes", async () => {
+  it("supports empty tag bodies with no release notes", async () => {
     const tagBody = "";
     const expected = "";
 
