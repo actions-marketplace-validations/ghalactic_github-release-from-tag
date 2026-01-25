@@ -28,16 +28,16 @@
     "@types/js-yaml": "^4.0.9",
     "@types/mdast": "^4.0.4",
     "@types/mime-types": "^3.0.1",
-    "@types/node": "^24.10.6",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@types/node": "^24.10.9",
+    "@vitest/coverage-v8": "^4.0.17",
     "esbuild": "^0.27.2",
     "escape-string-regexp": "^5.0.0",
     "file-url": "^4.0.0",
     "octokit": "^5.0.5",
-    "prettier": "^3.7.4",
+    "prettier": "^3.8.0",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "puppeteer": "^24.34.0",
+    "puppeteer": "^24.35.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.17"
   }
 }
